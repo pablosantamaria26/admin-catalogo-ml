@@ -799,10 +799,10 @@ $("bulkApply").onclick = async () => {
 };
 
 // ══════════════════ IMPORTAR LISTA COMPLETA DE UN PROVEEDOR ══════════════════
-const importState = { modo: "archivo", filas: [], colCodigoIdx: null, colPrecioIdx: null, matched: [], sinMatch: [] };
+const importState = { modo: "archivo", filas: [], colCodigoIdx: null, colPrecioIdx: null, matched: [], sinMatch: [], auto: null };
 
 function resetImportPanel(){
-  importState.filas = []; importState.matched = []; importState.sinMatch = [];
+  importState.filas = []; importState.matched = []; importState.sinMatch = []; importState.auto = null;
   $("importPasoOrigen").style.display = "";
   $("importPasoColumnas").style.display = "none";
   $("importPasoPreview").style.display = "none";
@@ -858,7 +858,7 @@ function usarTextoComoFilas(texto){
   $("importTabTexto").click();
   $("importTexto").value = texto;
   importState.filas = texto.split("\n").map(parseLineaTexto).filter(f => f.length);
-  prepararPasoColumnas();
+  procesarArchivoDetectado();
 }
 
 $("importFile").addEventListener("change", async (e) => {
@@ -878,7 +878,7 @@ $("importFile").addEventListener("change", async (e) => {
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
       importState.filas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-      prepararPasoColumnas();
+      procesarArchivoDetectado();
     }
   } catch (err) {
     toast("No se pudo leer el archivo: " + err.message);
@@ -896,7 +896,7 @@ btnAnalizarTexto.onclick = () => {
   const texto = $("importTexto").value;
   if (!texto.trim()) { toast("Pegá el texto primero"); return; }
   importState.filas = texto.split("\n").map(parseLineaTexto).filter(f => f.length);
-  prepararPasoColumnas();
+  procesarArchivoDetectado();
 };
 
 function parseLineaTexto(linea){
@@ -915,9 +915,12 @@ function parseLineaTexto(linea){
 // la izquierda — pero SIEMPRE es el mismo contando desde la derecha).
 function resolverIdx(idx, len){ return idx < 0 ? len + idx : idx; }
 
+// Arma los <select> de columnas (con ejemplos) pero no decide qué mostrar —
+// eso lo deciden mostrarPasoColumnas() / procesarArchivoDetectado() según
+// si hizo falta o no preguntarle algo al usuario.
 function prepararPasoColumnas(){
   const filas = importState.filas.filter(f => f && f.length);
-  if (!filas.length) { toast("No encontré filas para leer."); return; }
+  if (!filas.length) return false;
   const maxCols = Math.max(...filas.slice(0, 40).map(f => f.length));
   const filaLarga = filas.reduce((a, b) => (b.length > a.length ? b : a), filas[0]);
 
@@ -939,6 +942,10 @@ function prepararPasoColumnas(){
   // Por defecto: código = primera columna (casi siempre así), precio = última.
   $("selColCodigo").value = "0";
   $("selColPrecio").value = "-1";
+  return true;
+}
+
+function mostrarPasoColumnas(){
   $("importPasoOrigen").style.display = "none";
   $("importPasoColumnas").style.display = "";
   $("importPasoPreview").style.display = "none";
@@ -954,12 +961,10 @@ function parseNumero(str, formato){
   return parseFloat(s);
 }
 
-$("btnProcesarColumnas").onclick = () => {
-  const colCod = Number($("selColCodigo").value);
-  const colPre = Number($("selColPrecio").value);
-  const formato = $("selFormatoNum").value;
-  const r = reglaDe(marcaActiva);
-
+// Calcula matched/sinMatch para una combinación (columna código, columna
+// precio, formato de número) dada — la usan tanto el auto-detector (para
+// puntuar candidatos) como el botón manual "Ver vista previa".
+function procesarColumnas(colCod, colPre, formato){
   const matched = [], sinMatch = [];
   importState.filas.forEach(f => {
     if (!f || !f.length) return;
@@ -974,7 +979,105 @@ $("btnProcesarColumnas").onclick = () => {
     const nuevoPrecio = calcularPrecioFinal(marcaActiva, precio);
     matched.push({ producto, precioListaRaw: precio, nuevoPrecio });
   });
+  return { matched, sinMatch };
+}
 
+// ══ Auto-detección de columnas ══
+// No le pregunta nada al usuario: usa lo que YA sabe de esta marca (los
+// codigo_proveedor cargados en cada producto) como respuesta correcta, y
+// prueba todas las columnas candidatas (desde el inicio y desde el final)
+// contra esa respuesta. La columna de código es la que más veces matchea
+// un codigo_proveedor real. La columna de precio + formato de número es la
+// combinación que, aplicando la fórmula de la marca, da más resultados NO
+// sospechosos (reusa precioSospechoso — el mismo chequeo que evitó el
+// desastre de La Americana, ahora usado también para elegir sola).
+function autoDetectarColumnas(filas){
+  const productosMarca = CATALOGO.filter(p => p.marca === marcaActiva && p.codigo_proveedor);
+  const filasValidas = filas.filter(f => f && f.length);
+  if (!productosMarca.length || !filasValidas.length) return null;
+  const codigosConocidos = new Set(productosMarca.map(p => String(p.codigo_proveedor).trim()));
+  const maxCols = Math.max(...filasValidas.slice(0, 60).map(f => f.length));
+
+  const candidatos = [];
+  for (let c = 0; c < Math.min(maxCols, 8); c++) candidatos.push(c);
+  for (let k = 1; k <= Math.min(6, maxCols); k++) candidatos.push(-k);
+
+  // 1) Columna de código: la que más coincide contra los codigo_proveedor que ya tenemos.
+  let mejorCod = null, mejorCodScore = 0;
+  for (const cand of candidatos) {
+    let score = 0;
+    for (const f of filasValidas) {
+      const i = resolverIdx(cand, f.length);
+      if (i < 0 || i >= f.length) continue;
+      const val = String(f[i] ?? "").trim();
+      if (val && codigosConocidos.has(val)) score++;
+    }
+    if (score > mejorCodScore) { mejorCodScore = score; mejorCod = cand; }
+  }
+  if (mejorCod == null || mejorCodScore < 2) return null; // sin señal suficiente para confiar
+
+  // 2) Columna de precio + formato: la combinación con más resultados razonables.
+  const FORMATOS = ["punto", "coma", "miles_coma_decimal_punto", "miles_punto_decimal_coma"];
+  let mejor = null;
+  for (const cand of candidatos) {
+    if (cand === mejorCod) continue;
+    for (const formato of FORMATOS) {
+      let ok = 0, total = 0;
+      for (const f of filasValidas) {
+        const iCod = resolverIdx(mejorCod, f.length);
+        const iPre = resolverIdx(cand, f.length);
+        if (iCod < 0 || iPre < 0 || iCod >= f.length || iPre >= f.length) continue;
+        const codigoRaw = String(f[iCod] ?? "").trim();
+        if (!codigoRaw || !codigosConocidos.has(codigoRaw)) continue;
+        const producto = productosMarca.find(p => String(p.codigo_proveedor).trim() === codigoRaw);
+        const precio = parseNumero(f[iPre], formato);
+        if (isNaN(precio)) continue;
+        total++;
+        const nuevoPrecio = calcularPrecioFinal(marcaActiva, precio);
+        if (nuevoPrecio != null && !precioSospechoso(nuevoPrecio, producto.mayorista)) ok++;
+      }
+      if (total >= 2 && (!mejor || ok > mejor.ok || (ok === mejor.ok && total > mejor.total))) {
+        mejor = { colPrecio: cand, formato, ok, total };
+      }
+    }
+  }
+  if (!mejor || mejor.ok === 0 || mejor.ok / mejor.total < 0.5) return null; // ninguna combinación es confiable
+
+  return { colCodigo: mejorCod, colPrecio: mejor.colPrecio, formato: mejor.formato, confianza: mejor.ok / mejor.total };
+}
+
+// Punto de entrada único después de leer un archivo/texto: intenta resolver
+// todo solo. Si lo logra, va directo a la vista previa (Paso 3) — el
+// usuario no toca nada. Si no encuentra una combinación confiable (marca
+// sin codigo_proveedor cargado todavía, o un archivo muy distinto a lo
+// esperado), recién ahí cae al Paso 2 para elegir a mano.
+function procesarArchivoDetectado(){
+  if (!prepararPasoColumnas()) { toast("No encontré filas para leer."); return; }
+  const auto = autoDetectarColumnas(importState.filas);
+  if (auto) {
+    $("selColCodigo").value = String(auto.colCodigo);
+    $("selColPrecio").value = String(auto.colPrecio);
+    $("selFormatoNum").value = auto.formato;
+    importState.auto = auto;
+    const { matched, sinMatch } = procesarColumnas(auto.colCodigo, auto.colPrecio, auto.formato);
+    importState.matched = matched; importState.sinMatch = sinMatch;
+    renderImportPreview();
+  } else {
+    importState.auto = null;
+    mostrarPasoColumnas();
+    const productosMarca = CATALOGO.filter(p => p.marca === marcaActiva && p.codigo_proveedor);
+    toast(productosMarca.length
+      ? "No pude detectar las columnas solo con este archivo — elegilas abajo."
+      : `${marcaActiva} todavía no tiene ningún código de proveedor cargado, así que no tengo con qué detectar solo. Elegí las columnas abajo esta vez.`);
+  }
+}
+
+$("btnProcesarColumnas").onclick = () => {
+  const colCod = Number($("selColCodigo").value);
+  const colPre = Number($("selColPrecio").value);
+  const formato = $("selFormatoNum").value;
+  importState.auto = null; // elegido a mano — no mostrar la nota de "detecté solo"
+  const { matched, sinMatch } = procesarColumnas(colCod, colPre, formato);
   importState.matched = matched; importState.sinMatch = sinMatch;
   renderImportPreview();
 };
@@ -1001,8 +1104,9 @@ function renderImportPreview(){
 
   const avisoBox = (color, bg, texto) => `<div style="margin:0 0 10px; padding:12px 13px; border-radius:12px; background:${bg}; color:${color}; font-size:12.5px; font-weight:700; line-height:1.4">${texto}</div>`;
   if (sistemico) {
-    $("importAviso").innerHTML = avisoBox("var(--danger)", "var(--danger-dim)",
-      `🚫 Estos precios no tienen sentido — la mayoría (${cambianRaros.length} de ${cambian.length}) da valores absurdos comparados con el precio actual. Seguramente se eligió mal la columna de precio o el formato de número en el paso anterior. Volvé y probá de nuevo, no se va a aplicar nada así.`);
+    $("importAviso").innerHTML = avisoBox("var(--danger)", "var(--danger-dim)", importState.auto
+      ? `🚫 Intenté detectar la columna de precio solo, pero el resultado no da bien — la mayoría (${cambianRaros.length} de ${cambian.length}) sale con un valor absurdo comparado con el precio actual. Este archivo debe venir muy distinto a lo que esperaba. Elegí las columnas a mano abajo.`
+      : `🚫 Estos precios no tienen sentido — la mayoría (${cambianRaros.length} de ${cambian.length}) da valores absurdos comparados con el precio actual. Revisá la columna de precio o el formato de número elegidos abajo y volvé a intentar.`);
   } else if (cambianRaros.length) {
     $("importAviso").innerHTML = avisoBox("#B45400", "rgba(255,159,10,.14)",
       `⚠️ ${cambianRaros.length} producto${cambianRaros.length===1?'':'s'} con un precio raro (muy distinto al actual) — quedan marcados en rojo abajo y NO se van a tocar. Si de verdad cambió así de golpe, actualizalo a mano en "Editar precio".`);
