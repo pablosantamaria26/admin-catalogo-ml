@@ -6,8 +6,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0B2E33",
-  "theme_color": "#0B2E33",
+  "background_color": "#F2F2F7",
+  "theme_color": "#F2F2F7",
   "description": "Panel de administración de precios del catálogo Mercado Limpio.",
   "icons": [
     {
