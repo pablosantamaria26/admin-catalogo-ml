@@ -1,7 +1,7 @@
 {
   "name": "admin-catalogo-ml-desktop",
   "productName": "Admin Catálogo — Mercado Limpio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "App de escritorio para administrar precios del catálogo Mercado Limpio (ventana dedicada sobre el panel publicado en GitHub Pages)",
   "author": "Mercado Limpio Distribuidora",
   "private": true,
