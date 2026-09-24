@@ -61,13 +61,10 @@ function crearVentana() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      // sandbox:true rompe el renderer acá: la página registra un Service
-      // Worker con Cache Storage (necesario para el auto-update de docs/),
-      // y en esta versión de Electron el renderer sandboxeado manda un
-      // mensaje Mojo inválido a blink.mojom.CacheStorage que el proceso
-      // browser rechaza — mata el renderer al toque, la ventana ni llega a
-      // pintar nada. contextIsolation + nodeIntegration:false ya alcanzan
-      // como aislamiento (no hay preload ni IPC propio en esta app).
+      // El crash real (Mojo/CacheStorage matando el renderer al toque) era
+      // por cache.addAll() en docs/sw.js, no por esto — ver el fix ahí.
+      // Se deja igual en false: contextIsolation + nodeIntegration:false ya
+      // alcanzan como aislamiento acá (no hay preload ni IPC propio).
       sandbox: false,
     },
   });

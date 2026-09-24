@@ -1267,7 +1267,12 @@ init();
 // app hay una versión nueva de sw.js, se instala y activa sola (skipWaiting
 // en sw.js) y acá recargamos una vez apenas toma el control — sin que haya
 // que tocar ningún botón.
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && !navigator.userAgent.includes("Electron")) {
+  // La ventana de escritorio no necesita nada de esto (siempre carga la
+  // URL en vivo, no se "instala" en ningún lado) y, de paso, en esta
+  // versión de Electron el Service Worker + Cache Storage hace que el
+  // renderer se caiga solo unos segundos después de cargar (bug de
+  // Electron con blink.mojom.CacheStorage). Se salta directamente ahí.
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
