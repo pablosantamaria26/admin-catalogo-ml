@@ -7,11 +7,14 @@
 // toque algo de docs/ — si no, los cambios no llegan a los que ya tienen
 // la PWA instalada, ni con hard-reload (ver memoria: gotcha ya visto antes
 // en TiempoLibre-App).
-const CACHE = "admin-catalogo-ml-v2";
+const CACHE = "admin-catalogo-ml-v3";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  // No espera a que el usuario toque nada: en cuanto termina de instalar
+  // esta versión nueva, pasa a "activating" ya mismo (ver activate() de
+  // abajo, que además reclama las páginas abiertas con clients.claim()).
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (e) => {

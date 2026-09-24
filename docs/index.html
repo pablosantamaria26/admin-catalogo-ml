@@ -250,17 +250,6 @@ header{
 }
 .toast.show{opacity:1}
 
-.update-banner{
-  position:fixed; left:12px; right:12px; bottom:calc(14px + var(--safe-b)); z-index:410;
-  background:rgba(28,28,30,.85); -webkit-backdrop-filter:var(--blur); backdrop-filter:var(--blur); color:#fff;
-  border-radius:var(--radius-s); padding:12px 14px; box-shadow:var(--shadow); display:none; align-items:center; gap:10px; font-size:13px;
-}
-.update-banner.show{display:flex}
-.update-banner button{
-  flex-shrink:0; padding:8px 14px; border:none; border-radius:var(--radius-pill); background:var(--primary);
-  color:#fff; font-weight:800; font-size:12.5px; cursor:pointer;
-}
-
 /* ── VISTA REGLAS ── */
 .reglas-lista{padding:14px 16px calc(14px + var(--safe-b)); display:flex; flex-direction:column; gap:10px}
 .regla-card{
@@ -424,10 +413,6 @@ header{
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="update-banner" id="updateBanner">
-  <span>Hay una versión nueva del panel.</span>
-  <button type="button" id="btnUpdateReload">Actualizar</button>
-</div>
 
 <script>
 const SB_URL  = "https://gjeyvbidomxzofcdycya.supabase.co";
@@ -1128,37 +1113,24 @@ document.querySelectorAll(".section-tab").forEach(btn => {
 
 init();
 
-// ══════════════════ PWA: service worker + aviso de actualización ══════════════════
+// ══════════════════ PWA: service worker con auto-update silencioso ══════════════════
 // Cachea solo el shell estático (este HTML + manifest + icons) — nunca las
-// respuestas de Supabase, que siempre tienen que ser en vivo. Si se instala
-// un SW nuevo (porque sw.js cambió de versión), avisa con un banner en vez
-// de recargar solo: así no se pierde un precio a mitad de tipear.
+// respuestas de Supabase, que siempre tienen que ser en vivo. Si al abrir la
+// app hay una versión nueva de sw.js, se instala y activa sola (skipWaiting
+// en sw.js) y acá recargamos una vez apenas toma el control — sin que haya
+// que tocar ningún botón.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").then(reg => {
-      reg.addEventListener("updatefound", () => {
-        const nuevo = reg.installing;
-        if (!nuevo) return;
-        nuevo.addEventListener("statechange", () => {
-          if (nuevo.state === "installed" && navigator.serviceWorker.controller) {
-            $("updateBanner").classList.add("show");
-          }
-        });
-      });
-    }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
   let recargando = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (recargando) return;
     recargando = true;
-    location.reload();
+    toast("Actualizando…");
+    setTimeout(() => location.reload(), 400);
   });
 }
-$("btnUpdateReload").onclick = () => {
-  navigator.serviceWorker.getRegistration().then(reg => {
-    if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-  });
-};
 </script>
 </body>
 </html>
