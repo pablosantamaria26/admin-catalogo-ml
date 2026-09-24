@@ -7,7 +7,7 @@
 // toque algo de docs/ — si no, los cambios no llegan a los que ya tienen
 // la PWA instalada, ni con hard-reload (ver memoria: gotcha ya visto antes
 // en TiempoLibre-App).
-const CACHE = "admin-catalogo-ml-v3";
+const CACHE = "admin-catalogo-ml-v4";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
