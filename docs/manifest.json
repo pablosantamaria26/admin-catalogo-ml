@@ -1,0 +1,26 @@
+{
+  "name": "Admin Catálogo — Mercado Limpio",
+  "short_name": "Admin Catálogo",
+  "id": "https://pablosantamaria26.github.io/admin-catalogo-ml/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B2E33",
+  "theme_color": "#0B2E33",
+  "description": "Panel de administración de precios del catálogo Mercado Limpio.",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
