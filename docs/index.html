@@ -238,6 +238,7 @@ header{
 }
 .row-lista-nueva .resultado.listo{color:var(--primary-dark)}
 .row-lista-nueva .resultado.pendiente-guardar{color:var(--accent)}
+.row-lista-nueva .resultado.sospechoso{color:var(--danger)}
 
 .empty{text-align:center; padding:60px 20px; color:var(--text-muted); font-size:13px}
 .loading{text-align:center; padding:60px 20px; color:var(--text-muted); font-size:13px}
@@ -371,6 +372,7 @@ header{
     <div class="import-step" id="importPasoPreview" style="display:none">
       <div class="import-step-title">Paso 3 — confirmar antes de guardar</div>
       <div class="import-resumen" id="importResumen"></div>
+      <div id="importAviso"></div>
       <div class="import-preview-wrap">
         <table class="import-preview-tabla">
           <thead><tr><th>Cód. prov.</th><th>Producto</th><th>Precio actual</th><th></th><th>Precio nuevo</th></tr></thead>
@@ -535,6 +537,21 @@ function calcularPrecioFinal(marca, precioListaNuevo){
   return Math.round(base * mult * 100) / 100;
 }
 
+// Un precio calculado es "sospechoso" cuando no tiene sentido por sí solo o
+// cuando se dispara respecto al precio actual — casi siempre porque se
+// matcheó la columna equivocada (un código/EAN en vez del precio) o el
+// formato de número equivocado en el paso anterior. Nunca se aplica solo:
+// se muestra aparte para que se revise a mano antes de tocar nada.
+function precioSospechoso(nuevo, actual){
+  if (nuevo == null || isNaN(nuevo) || nuevo <= 0) return true;
+  if (nuevo > 500000) return true; // ningún producto del catálogo vale esto
+  if (actual != null && actual > 0) {
+    const ratio = nuevo / actual;
+    if (ratio > 3 || ratio < 0.33) return true;
+  }
+  return false;
+}
+
 // ── Modo: editar precio directo / uno por uno / importar archivo ──
 function setModo(m){
   modoActual = m;
@@ -597,6 +614,9 @@ function actualizarResultadoFila(codigo){
   if (final == null) {
     span.textContent = "no se puede calcular solo (ver nota de la regla)";
     span.className = "resultado";
+  } else if (precioSospechoso(final, p.mayorista)) {
+    span.textContent = `⚠️ $${fmt(final)} — no parece bien, revisar`;
+    span.className = "resultado sospechoso";
   } else {
     span.textContent = `→ $${fmt(final)}`;
     span.className = "resultado pendiente-guardar";
@@ -628,14 +648,16 @@ $("btnLimpiarLista").onclick = () => {
 
 $("btnGuardarLista").onclick = async () => {
   const entradas = Object.entries(precionsNuevos);
-  const aplicables = entradas.map(([codigo, val]) => {
+  const calculados = entradas.map(([codigo, val]) => {
     const p = CATALOGO.find(x => x.codigo === codigo);
     const final = calcularPrecioFinal(p.marca, Number(val));
     return { codigo, final, p };
   }).filter(x => x.final != null);
+  const aplicables = calculados.filter(x => !precioSospechoso(x.final, x.p.mayorista));
+  const sospechosos = calculados.length - aplicables.length;
 
-  if (!aplicables.length) { toast("Ninguno se puede calcular automático con esta regla."); return; }
-  if (!confirm(`Vas a actualizar el precio final de ${aplicables.length} producto${aplicables.length===1?'':'s'} de ${escHtml(marcaActiva)}. ¿Confirmás?`)) return;
+  if (!aplicables.length) { toast(sospechosos ? "Todos dieron un precio raro — revisalos, no se guardó nada." : "Ninguno se puede calcular automático con esta regla."); return; }
+  if (!confirm(`Vas a actualizar el precio final de ${aplicables.length} producto${aplicables.length===1?'':'s'} de ${escHtml(marcaActiva)}.${sospechosos ? ` (${sospechosos} con precio raro se van a saltear.)` : ''} ¿Confirmás?`)) return;
 
   $("btnGuardarLista").disabled = true;
   let ok = 0, fail = 0;
@@ -654,7 +676,7 @@ $("btnGuardarLista").onclick = async () => {
   Object.keys(precionsNuevos).forEach(k => delete precionsNuevos[k]);
   actualizarBarraGuardar();
   setModo("precio");
-  toast(`✔ ${ok} precio${ok===1?'':'s'} actualizado${ok===1?'':'s'}${fail?`, ${fail} con error`:''}`);
+  toast(`✔ ${ok} precio${ok===1?'':'s'} actualizado${ok===1?'':'s'}${fail?`, ${fail} con error`:''}${sospechosos?`, ${sospechosos} salteado${sospechosos===1?'':'s'} por raro`:''}`);
 };
 
 // Editar precio individual (modo normal): guarda al salir del campo o con Enter.
@@ -963,24 +985,46 @@ function renderImportPreview(){
   const sinCambio = matched.filter(m => m.nuevoPrecio != null && m.nuevoPrecio === m.producto.mayorista);
   const noCalculable = matched.filter(m => m.nuevoPrecio == null);
 
+  // Separa lo que da un precio razonable de lo que no. Si la MAYORÍA de los
+  // cambios da un precio sin sentido, es casi seguro que se eligió mal la
+  // columna de precio o el formato de número en el paso anterior — ahí se
+  // corta todo, no se ofrece aplicar nada (ver precioSospechoso más arriba).
+  const cambianOk = cambian.filter(m => !precioSospechoso(m.nuevoPrecio, m.producto.mayorista));
+  const cambianRaros = cambian.filter(m => precioSospechoso(m.nuevoPrecio, m.producto.mayorista));
+  const sistemico = cambian.length >= 3 && cambianRaros.length / cambian.length >= 0.5;
+
   let resumen = `<b>${matched.length}</b> productos de ${escHtml(marcaActiva)} reconocidos por código`;
   if (sinMatch.length) resumen += ` · <b>${sinMatch.length}</b> códigos de la lista no matchean ningún producto`;
   if (noCalculable.length) resumen += ` · <b>${noCalculable.length}</b> no se pueden calcular con esta regla (ver nota)`;
   if (sinCambio.length) resumen += ` · ${sinCambio.length} quedan con el mismo precio`;
   $("importResumen").innerHTML = resumen;
 
-  $("importPreviewBody").innerHTML = cambian.map(m => `
-    <tr>
+  const avisoBox = (color, bg, texto) => `<div style="margin:0 0 10px; padding:12px 13px; border-radius:12px; background:${bg}; color:${color}; font-size:12.5px; font-weight:700; line-height:1.4">${texto}</div>`;
+  if (sistemico) {
+    $("importAviso").innerHTML = avisoBox("var(--danger)", "var(--danger-dim)",
+      `🚫 Estos precios no tienen sentido — la mayoría (${cambianRaros.length} de ${cambian.length}) da valores absurdos comparados con el precio actual. Seguramente se eligió mal la columna de precio o el formato de número en el paso anterior. Volvé y probá de nuevo, no se va a aplicar nada así.`);
+  } else if (cambianRaros.length) {
+    $("importAviso").innerHTML = avisoBox("#B45400", "rgba(255,159,10,.14)",
+      `⚠️ ${cambianRaros.length} producto${cambianRaros.length===1?'':'s'} con un precio raro (muy distinto al actual) — quedan marcados en rojo abajo y NO se van a tocar. Si de verdad cambió así de golpe, actualizalo a mano en "Editar precio".`);
+  } else {
+    $("importAviso").innerHTML = "";
+  }
+
+  const filaHtml = (m, raro) => `
+    <tr${raro ? ' style="background:var(--danger-dim)"' : ''}>
       <td>${escHtml(m.producto.codigo_proveedor)}</td>
       <td>${escHtml(m.producto.nombre)}</td>
       <td>${fmt(m.producto.mayorista)}</td>
       <td class="flecha">→</td>
-      <td class="nuevo">$${fmt(m.nuevoPrecio)}</td>
-    </tr>`).join("") || `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-muted)">Ningún precio cambia.</td></tr>`;
+      <td class="${raro ? '' : 'nuevo'}" style="${raro ? 'color:var(--danger); font-weight:800' : ''}">$${fmt(m.nuevoPrecio)}${raro ? ' ⚠️' : ''}</td>
+    </tr>`;
 
-  importState.matched = cambian; // solo lo que realmente cambia se aplica
-  $("btnImportAplicar").textContent = `Aplicar ${cambian.length} cambio${cambian.length===1?'':'s'}`;
-  $("btnImportAplicar").disabled = cambian.length === 0;
+  const filas = sistemico ? [] : [...cambianOk.map(m => filaHtml(m, false)), ...cambianRaros.map(m => filaHtml(m, true))];
+  $("importPreviewBody").innerHTML = filas.join("") || `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-muted)">${sistemico ? "Corregí la columna/formato y volvé a intentar." : "Ningún precio cambia."}</td></tr>`;
+
+  importState.matched = sistemico ? [] : cambianOk; // solo lo que da un valor razonable se aplica
+  $("btnImportAplicar").textContent = sistemico ? "Corregí el paso anterior" : `Aplicar ${cambianOk.length} cambio${cambianOk.length===1?'':'s'}`;
+  $("btnImportAplicar").disabled = sistemico || cambianOk.length === 0;
 
   $("importPasoOrigen").style.display = "none";
   $("importPasoColumnas").style.display = "none";
