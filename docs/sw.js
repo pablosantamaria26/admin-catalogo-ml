@@ -7,14 +7,25 @@
 // toque algo de docs/ — si no, los cambios no llegan a los que ya tienen
 // la PWA instalada, ni con hard-reload (ver memoria: gotcha ya visto antes
 // en TiempoLibre-App).
-const CACHE = "admin-catalogo-ml-v5";
-const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const CACHE = "admin-catalogo-ml-v6";
+const SHELL = ["./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
   // No espera a que el usuario toque nada: en cuanto termina de instalar
   // esta versión nueva, pasa a "activating" ya mismo (ver activate() de
   // abajo, que además reclama las páginas abiertas con clients.claim()).
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  //
+  // OJO: cache.addAll(SHELL) (un solo llamado con el array entero) hacía
+  // que Electron matara el renderer al toque con un error de validación
+  // Mojo en blink.mojom.CacheStorage ("array size - 5; index - 1" —
+  // justo el tamaño de este array). Cachear uno por uno con cache.add()
+  // evita ese bug y de paso es más robusto: si un ítem falla, no aborta
+  // el cacheo de los demás.
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.all(SHELL.map((url) => c.add(url).catch(() => {}))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
