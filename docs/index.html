@@ -157,6 +157,10 @@ header{
 .import-preview-wrap{max-height:340px; overflow-y:auto; border:0.5px solid var(--border); border-radius:var(--radius-s); margin-bottom:10px}
 .import-resumen{font-size:12px; color:var(--text-muted); margin-bottom:10px}
 .import-resumen b{color:var(--text-main)}
+.import-o{font-size:11.5px; color:var(--text-muted); margin:14px 0 6px; font-weight:700}
+.import-grupo{margin:0 0 14px}
+.import-grupo-head{font-size:13px; margin-bottom:6px}
+.import-grupo-nota{font-size:11px; color:var(--text-muted); margin-bottom:6px; line-height:1.4}
 
 /* ── BULK PANEL ── */
 .bulk{
@@ -319,68 +323,24 @@ header{
     <button type="button" class="btn-guardar" id="btnGuardarLista" disabled>Guardar 0 precios nuevos</button>
   </div>
 
-  <!-- ══ Panel: subir el archivo/lista entera de un proveedor ══ -->
+  <!-- ══ Panel: subir la lista de uno o varios proveedores ══ -->
   <div class="import-panel" id="importPanel" style="display:none">
-    <div class="import-step" id="importPasoOrigen">
-      <div class="import-step-title">Paso 1 — ¿de dónde sale la lista?</div>
-      <div class="import-tabs">
-        <button type="button" id="importTabArchivo" class="active">📄 Subir archivo</button>
-        <button type="button" id="importTabTexto">✍️ Pegar / foto (a mano)</button>
-      </div>
+    <div id="importOrigen">
       <label class="import-file" id="importFileLabel">
-        📎 Tocá para elegir el archivo — Excel, PDF, CSV o texto
-        <input type="file" id="importFile" accept=".xlsx,.xls,.pdf,.csv,.txt" />
+        📎 <b>Tocá para elegir la lista del proveedor</b> — PDF, Excel o texto<br>
+        <small>No hace falta elegir la marca: se detecta sola. Si el proveedor manda dos listas (La Gauchita, Durax), elegí las dos juntas y queda el precio más barato.</small>
+        <input type="file" id="importFile" accept=".xlsx,.xls,.pdf,.csv,.txt" multiple />
       </label>
-      <div class="import-hint" id="importHintArchivo">
-        Con PDF: la app lee el texto sola, página por página. Si algún renglón queda raro (nombres partidos en 2 líneas, por ejemplo), lo podés corregir a mano antes de analizar — pasa a la pestaña "Pegar" apenas termina de leer.
-      </div>
-      <textarea class="import-textarea" id="importTexto" style="display:none" placeholder="Pegá acá el texto copiado del PDF/foto, o líneas tipo:&#10;6585,5669&#10;6129,1520.94&#10;..."></textarea>
-      <div class="import-hint" id="importHintTexto" style="display:none">
-        Una línea por producto. Separá el código y el precio con coma, tabulación o dos espacios. El resto del texto de la línea (nombre, unidades) no hace falta borrarlo — el sistema busca los números solo. Para una foto sin texto (una imagen escaneada): tipeá vos código y precio, un renglón por producto.
-      </div>
+      <div class="import-o">o pegá el mensaje del proveedor (WhatsApp, mail…):</div>
+      <textarea class="import-textarea" id="importTexto" placeholder="Pegá acá el texto con los precios…"></textarea>
+      <button type="button" class="import-btn" id="btnAnalizarTexto">Analizar texto →</button>
     </div>
-
-    <div class="import-step" id="importPasoColumnas" style="display:none">
-      <div class="import-step-title">Paso 2 — ¿cuál columna es cuál?</div>
-      <div class="import-row2">
-        <div class="import-field">
-          <label>Código del proveedor</label>
-          <select id="selColCodigo"></select>
-        </div>
-        <div class="import-field">
-          <label>Precio</label>
-          <select id="selColPrecio"></select>
-        </div>
-      </div>
-      <div class="import-row2" style="margin-top:8px">
-        <div class="import-field">
-          <label>Formato del número</label>
-          <select id="selFormatoNum">
-            <option value="punto">1234.56 (punto decimal)</option>
-            <option value="coma">1234,56 (coma decimal)</option>
-            <option value="miles_coma_decimal_punto">1,234.56 (miles con coma)</option>
-            <option value="miles_punto_decimal_coma">1.234,56 (miles con punto)</option>
-          </select>
-        </div>
-        <div class="import-field">
-          <label>&nbsp;</label>
-          <button type="button" class="import-btn" id="btnProcesarColumnas">Ver vista previa</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="import-step" id="importPasoPreview" style="display:none">
-      <div class="import-step-title">Paso 3 — confirmar antes de guardar</div>
+    <div class="import-hint" id="importProgreso" style="display:none; text-align:center; padding:18px 0"></div>
+    <div id="importPreview" style="display:none">
       <div class="import-resumen" id="importResumen"></div>
-      <div id="importAviso"></div>
-      <div class="import-preview-wrap">
-        <table class="import-preview-tabla">
-          <thead><tr><th>Cód. prov.</th><th>Producto</th><th>Precio actual</th><th></th><th>Precio nuevo</th></tr></thead>
-          <tbody id="importPreviewBody"></tbody>
-        </table>
-      </div>
-      <button type="button" class="import-btn secundario" id="btnImportVolver">← Volver a elegir columnas</button>
-      <button type="button" class="import-btn" id="btnImportAplicar" style="margin-top:8px">Aplicar cambios</button>
+      <div id="importGrupos"></div>
+      <button type="button" class="import-btn" id="btnImportAplicar">Aplicar</button>
+      <button type="button" class="import-btn secundario" id="btnImportOtra" style="margin-top:8px">Subir otra lista</button>
     </div>
   </div>
 
@@ -498,26 +458,29 @@ $("buscador").addEventListener("input", () => {
 });
 
 // ── Caja de regla activa (muestra la fórmula de la marca elegida) ──
+// "Subir lista" funciona siempre (la marca se detecta sola); solo "Uno por
+// uno" necesita una marca elegida con regla.
 function renderReglaBox(){
   const box = $("reglaBox");
   if (marcaActiva === "TODAS") {
-    box.classList.remove("show"); $("modoListaNueva").disabled = true; $("modoImportar").disabled = true;
+    box.classList.remove("show"); $("modoListaNueva").disabled = true;
+    if (modoActual === "lista") setModo("precio");
     return;
   }
   const r = reglaDe(marcaActiva);
-  $("modoListaNueva").disabled = false; $("modoImportar").disabled = false;
+  $("modoListaNueva").disabled = false;
   if (!r || r.estado === "Falta definir") {
     box.innerHTML = `<span class="falta">⚠️ ${escHtml(marcaActiva)} todavía no tiene una regla de precio definida.</span> Definila en la pestaña "Reglas por proveedor" antes de actualizar precios.`;
     box.classList.add("show");
-    $("modoListaNueva").disabled = true; $("modoImportar").disabled = true;
-    if (modoActual !== "precio") setModo("precio");
+    $("modoListaNueva").disabled = true;
+    if (modoActual === "lista") setModo("precio");
     return;
   }
   if (r.estado === "Sistema propio") {
     box.innerHTML = `${escHtml(marcaActiva)} usa un sistema de precios propio, aparte de este panel.`;
     box.classList.add("show");
-    $("modoListaNueva").disabled = true; $("modoImportar").disabled = true;
-    if (modoActual !== "precio") setModo("precio");
+    $("modoListaNueva").disabled = true;
+    if (modoActual === "lista") setModo("precio");
     return;
   }
   box.innerHTML = `<b>Regla de ${escHtml(marcaActiva)}:</b> ${escHtml(r.formula_texto || "—")}`;
@@ -525,14 +488,19 @@ function renderReglaBox(){
 }
 
 // ── Calcula el precio final a partir del "precio de lista" nuevo, según la regla de la marca ──
-function calcularPrecioFinal(marca, precioListaNuevo){
+function calcularPrecioFinal(marca, precioListaNuevo, producto){
   const r = reglaDe(marca);
   if (!r || r.estado !== "Definida" || precioListaNuevo == null || isNaN(precioListaNuevo)) return null;
   let base = precioListaNuevo;
   if (r.iva_pct) base = base * (1 + Number(r.iva_pct)/100);
-  // BULTO_DIV_UNIDADES necesita más datos (paquetes por bulto, unidades por paquete) que no
-  // vienen en un solo número — para esos casos no se puede recalcular automático acá.
-  if (r.base_tipo === "BULTO_DIV_UNIDADES") return null;
+  // Precio de lista por BULTO (Bio Bag / Melli): se divide por las unidades
+  // del bulto, que ya están cargadas en la presentación "Bulto" del producto
+  // (1000, 500 o 300 bolsas — lo mismo que dice la lista: "100 paquetes x10").
+  if (r.base_tipo === "BULTO_DIV_UNIDADES") {
+    const bulto = producto && producto.venta && (producto.venta.pres || []).find(p => p.id === "bulto");
+    if (!bulto || !(bulto.factor > 0)) return null;
+    base = base / bulto.factor;
+  }
   const mult = Number(r.multiplicador || 1);
   return Math.round(base * mult * 100) / 100;
 }
@@ -543,7 +511,7 @@ function calcularPrecioFinal(marca, precioListaNuevo){
 // formato de número equivocado en el paso anterior. Nunca se aplica solo:
 // se muestra aparte para que se revise a mano antes de tocar nada.
 function precioSospechoso(nuevo, actual){
-  if (nuevo == null || isNaN(nuevo) || nuevo <= 0) return true;
+  if (nuevo == null || isNaN(nuevo) || nuevo < 20) return true; // lo más barato del catálogo ronda $57 — menos de $20 es un número mal leído
   if (nuevo > 500000) return true; // ningún producto del catálogo vale esto
   if (actual != null && actual > 0) {
     const ratio = nuevo / actual;
@@ -610,7 +578,7 @@ function actualizarResultadoFila(codigo){
   const val = precionsNuevos[codigo];
   if (val == null || val === "") { span.textContent = "—"; span.className = "resultado"; return; }
   const p = CATALOGO.find(x => x.codigo === codigo);
-  const final = calcularPrecioFinal(p.marca, Number(val));
+  const final = calcularPrecioFinal(p.marca, Number(val), p);
   if (final == null) {
     span.textContent = "no se puede calcular solo (ver nota de la regla)";
     span.className = "resultado";
@@ -650,7 +618,7 @@ $("btnGuardarLista").onclick = async () => {
   const entradas = Object.entries(precionsNuevos);
   const calculados = entradas.map(([codigo, val]) => {
     const p = CATALOGO.find(x => x.codigo === codigo);
-    const final = calcularPrecioFinal(p.marca, Number(val));
+    const final = calcularPrecioFinal(p.marca, Number(val), p);
     return { codigo, final, p };
   }).filter(x => x.final != null);
   const aplicables = calculados.filter(x => !precioSospechoso(x.final, x.p.mayorista));
@@ -798,38 +766,42 @@ $("bulkApply").onclick = async () => {
   toast(`✔ ${hechos} precio${hechos===1?'':'s'} actualizado${hechos===1?'':'s'}`);
 };
 
-// ══════════════════ IMPORTAR LISTA COMPLETA DE UN PROVEEDOR ══════════════════
-const importState = { modo: "archivo", filas: [], colCodigoIdx: null, colPrecioIdx: null, matched: [], sinMatch: [], auto: null };
+// ══════════════════ SUBIR LISTAS DE PROVEEDORES ══════════════════
+// Regla de oro: Pablo sube la lista (PDF, Excel o el mensaje de WhatsApp
+// pegado) y el sistema resuelve TODO solo — de qué proveedor es, qué
+// renglón es cada artículo, qué número es el precio — y deja un solo toque
+// para aplicar. Nada de elegir marca ni columnas.
+//
+// Cómo reconoce cada artículo, en orden de confianza:
+//  1. Por código del proveedor (codigo_proveedor ya guardado): se busca la
+//     columna que coincide con más códigos distintos, y la columna de
+//     precio + formato de número que da precios creíbles y más parecidos a
+//     los actuales.
+//  2. Por código de barras (nuestro código interno es el EAN en muchas
+//     marcas): si aparece en un renglón, ese es el renglón.
+//  3. Por nombre (solo marcas casi sin códigos cargados, p.ej. Fedata por
+//     WhatsApp): medidas obligatorias, palabras con abreviaturas.
+// Protecciones: un precio absurdo nunca se aplica (precioSospechoso), y una
+// lista de un proveedor no puede tocar artículos de otro (ver aceptable()).
+// Si un artículo viene en varias listas a la vez (La Gauchita, Durax), queda
+// el precio más barato.
 
-function resetImportPanel(){
-  importState.filas = []; importState.matched = []; importState.sinMatch = []; importState.auto = null;
-  $("importPasoOrigen").style.display = "";
-  $("importPasoColumnas").style.display = "none";
-  $("importPasoPreview").style.display = "none";
-  $("importFile").value = "";
-  $("importTexto").value = "";
-  $("importTabArchivo").click();
-}
+const importState = { fuentes: [], resultado: null };
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-$("importTabArchivo").onclick = () => {
-  importState.modo = "archivo";
-  $("importTabArchivo").classList.add("active"); $("importTabTexto").classList.remove("active");
-  $("importFileLabel").style.display = ""; $("importHintArchivo").style.display = "block";
-  $("importTexto").style.display = "none"; $("importHintTexto").style.display = "none";
-};
-$("importTabTexto").onclick = () => {
-  importState.modo = "texto";
-  $("importTabTexto").classList.add("active"); $("importTabArchivo").classList.remove("active");
-  $("importFileLabel").style.display = "none"; $("importHintArchivo").style.display = "none";
-  $("importTexto").style.display = ""; $("importHintTexto").style.display = "block";
-};
+function resetImportPanel(){
+  importState.fuentes = []; importState.resultado = null; importState.forzar = {};
+  $("importOrigen").style.display = "";
+  $("importProgreso").style.display = "none";
+  $("importPreview").style.display = "none";
+  $("importFile").value = "";
+  $("importTexto").value = "";
+}
 
-// Extrae el texto de un PDF reconstruyendo renglones por posición (Y),
-// igual técnica que usamos a mano toda esta conversación, pero corriendo
-// directo en el navegador con pdf.js.
-async function extraerTextoPdf(buf){
+// ── Lectura de archivos ──
+// Extrae el texto de un PDF reconstruyendo renglones por posición (Y).
+async function extraerTextoPdf(buf, posiciones){
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const lineas = [];
   for (let p = 1; p <= pdf.numPages; p++) {
@@ -838,6 +810,7 @@ async function extraerTextoPdf(buf){
     const spans = content.items
       .map(it => ({ text: it.str, x: it.transform[4], y: it.transform[5] }))
       .filter(s => s.text.trim());
+    if (posiciones) spans.forEach(s => posiciones.push({ p, x: s.x, y: s.y, s: s.text.trim() })); // para catálogos en grilla (MisPlast)
     spans.sort((a, b) => b.y - a.y || a.x - b.x); // en pdf.js el Y crece hacia arriba
     const filas = []; const TOL = 3;
     for (const s of spans) {
@@ -848,318 +821,578 @@ async function extraerTextoPdf(buf){
     filas.sort((a, b) => b.y - a.y);
     filas.forEach(f => {
       f.items.sort((a, b) => a.x - b.x);
-      lineas.push(f.items.map(i => i.text).join(" "));
+      lineas.push(f.items.map(i => i.text).join(" ").replace(/\s+/g, " ").trim()); // pdf.js deja espacios de más dentro de los textos
     });
   }
   return lineas.join("\n");
 }
 
-function usarTextoComoFilas(texto){
-  $("importTabTexto").click();
-  $("importTexto").value = texto;
-  importState.filas = texto.split("\n").map(parseLineaTexto).filter(f => f.length);
-  procesarArchivoDetectado();
+function fuenteDeTexto(nombre, texto){
+  const lineas = texto.split("\n");
+  return { nombre, lineas, filas: lineas.map(parseLineaTexto).filter(f => f.length) };
 }
 
-$("importFile").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; if (!file) return;
+async function leerArchivo(file){
   const nombre = file.name.toLowerCase();
-  try {
-    if (nombre.endsWith(".pdf")) {
-      toast("Leyendo el PDF…");
-      const buf = await file.arrayBuffer();
-      const texto = await extraerTextoPdf(buf);
-      usarTextoComoFilas(texto);
-    } else if (nombre.endsWith(".csv") || nombre.endsWith(".txt")) {
-      const texto = await file.text();
-      usarTextoComoFilas(texto);
-    } else {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      importState.filas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
-      procesarArchivoDetectado();
-    }
-  } catch (err) {
-    toast("No se pudo leer el archivo: " + err.message);
+  if (nombre.endsWith(".pdf")) {
+    const items = [];
+    const f = fuenteDeTexto(file.name, await extraerTextoPdf(await file.arrayBuffer(), items));
+    f.items = items;
+    return f;
   }
-});
-
-// El textarea se analiza al tocar el botón (así el usuario puede terminar de pegar/editar antes).
-const btnAnalizarTexto = document.createElement("button");
-btnAnalizarTexto.type = "button"; btnAnalizarTexto.className = "import-btn"; btnAnalizarTexto.id = "btnAnalizarTexto";
-btnAnalizarTexto.textContent = "Analizar texto →"; btnAnalizarTexto.style.display = "none";
-$("importHintTexto").after(btnAnalizarTexto);
-$("importTabTexto").addEventListener("click", () => { btnAnalizarTexto.style.display = "block"; });
-$("importTabArchivo").addEventListener("click", () => { btnAnalizarTexto.style.display = "none"; });
-btnAnalizarTexto.onclick = () => {
-  const texto = $("importTexto").value;
-  if (!texto.trim()) { toast("Pegá el texto primero"); return; }
-  importState.filas = texto.split("\n").map(parseLineaTexto).filter(f => f.length);
-  procesarArchivoDetectado();
-};
-
-function parseLineaTexto(linea){
-  const l = linea.trim();
-  if (!l) return [];
-  if (l.includes("\t")) return l.split("\t").map(s => s.trim());
-  if (l.includes(",")) return l.split(",").map(s => s.trim());
-  if (/\s{2,}/.test(l)) return l.split(/\s{2,}/).map(s => s.trim());
-  return l.split(/\s+/).map(s => s.trim());
+  if (nombre.endsWith(".txt")) return fuenteDeTexto(file.name, await file.text());
+  // Excel y CSV: SheetJS separa las columnas bien (comillas, comas en campos…).
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const filas = [];
+  wb.SheetNames.forEach(n => filas.push(...XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true })));
+  const lineas = filas.map(f => (f || []).map(v => v == null ? "" : String(v)).join("  "));
+  return { nombre: file.name, lineas, filas: filas.filter(f => f && f.length) };
 }
 
-// Resuelve un índice de columna que puede ser positivo (desde el inicio,
-// para Excel donde todas las filas tienen las mismas columnas) o negativo
-// (desde el final, para texto/PDF donde el nombre del producto tiene largo
-// variable y el precio no siempre cae en la misma posición contada desde
-// la izquierda — pero SIEMPRE es el mismo contando desde la derecha).
+// Parte un renglón de texto (pegado o de un PDF) en celdas. Las comas NO se
+// usan como separador en general: en las listas casi siempre son parte de
+// un número ("1,119.90" o "1.234,50"). Solo se toma como "código,precio" un
+// renglón de exactamente dos campos sin espacios, si lo de después de la
+// coma no son 1-2 dígitos (eso sería un decimal: "1234,50").
+function parseLineaTexto(linea){
+  const l = String(linea || "").trim();
+  if (!l) return [];
+  let celdas;
+  const dosCampos = l.match(/^([^,\s]+)\s*,\s*([^,\s]+)$/);
+  if (l.includes("\t")) celdas = l.split("\t");
+  else if (dosCampos && !/^\d{1,2}$/.test(dosCampos[2])) celdas = [dosCampos[1], dosCampos[2]];
+  else if (/\s{2,}/.test(l)) celdas = l.split(/\s{2,}/);
+  else celdas = l.split(/\s+/);
+  return celdas.map(s => s.trim()).filter(s => /[A-Za-z0-9]/.test(s)); // descarta sueltos tipo "*" o "$"
+}
+
+// Índice de columna positivo (desde el inicio, Excel) o negativo (desde el
+// final, texto/PDF: el nombre cambia de largo pero el precio siempre queda
+// en la misma posición contando desde la derecha).
 function resolverIdx(idx, len){ return idx < 0 ? len + idx : idx; }
 
-// Arma los <select> de columnas (con ejemplos) pero no decide qué mostrar —
-// eso lo deciden mostrarPasoColumnas() / procesarArchivoDetectado() según
-// si hizo falta o no preguntarle algo al usuario.
-function prepararPasoColumnas(){
-  const filas = importState.filas.filter(f => f && f.length);
-  if (!filas.length) return false;
-  const maxCols = Math.max(...filas.slice(0, 40).map(f => f.length));
-  const filaLarga = filas.reduce((a, b) => (b.length > a.length ? b : a), filas[0]);
-
-  const desdeInicio = [];
-  for (let c = 0; c < maxCols; c++) {
-    const ejemplo = filas.find(f => f[c] != null && String(f[c]).trim() !== "");
-    desdeInicio.push(`<option value="${c}">Columna ${c + 1} (desde el inicio) — ej: "${escHtml(ejemplo ? String(ejemplo[c]).slice(0, 22) : "")}"</option>`);
-  }
-  const desdeFinal = [];
-  const nombresFinal = ["Última columna", "Anteúltima columna", "3° desde el final", "4° desde el final", "5° desde el final"];
-  for (let k = 1; k <= Math.min(5, maxCols); k++) {
-    const val = -k;
-    const ejemplo = filaLarga[filaLarga.length - k];
-    desdeFinal.push(`<option value="${val}">${nombresFinal[k-1]} — ej: "${escHtml(ejemplo != null ? String(ejemplo).slice(0,22) : "")}"</option>`);
-  }
-  const opciones = `<optgroup label="Contando desde el final (recomendado para PDF/foto)">${desdeFinal.join("")}</optgroup><optgroup label="Contando desde el inicio (Excel)">${desdeInicio.join("")}</optgroup>`;
-  $("selColCodigo").innerHTML = opciones;
-  $("selColPrecio").innerHTML = opciones;
-  // Por defecto: código = primera columna (casi siempre así), precio = última.
-  $("selColCodigo").value = "0";
-  $("selColPrecio").value = "-1";
-  return true;
-}
-
-function mostrarPasoColumnas(){
-  $("importPasoOrigen").style.display = "none";
-  $("importPasoColumnas").style.display = "";
-  $("importPasoPreview").style.display = "none";
-}
-
 function parseNumero(str, formato){
+  if (typeof str === "number") return str; // celda numérica de Excel: ya es el número
   let s = String(str).trim().replace(/[^\d.,\-]/g, "");
   if (!s) return NaN;
+  if (formato === "auto") {
+    // Por la forma de cada número (en un mismo catálogo conviven "1.325,00"
+    // y "860.00"): tras el último separador, 3 dígitos = miles; si no, decimales.
+    s = s.replace(/[.,]+$/, "");
+    const i = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+    if (i < 0) return parseFloat(s);
+    const dec = s.slice(i + 1);
+    if (dec.length === 3) return parseFloat(s.replace(/[.,]/g, ""));
+    return parseFloat(s.slice(0, i).replace(/[.,]/g, "") + "." + dec);
+  }
   if (formato === "punto") return parseFloat(s.replace(/,/g, ""));
   if (formato === "coma") return parseFloat(s.replace(/\./g, "").replace(",", "."));
   if (formato === "miles_coma_decimal_punto") return parseFloat(s.replace(/,/g, ""));
   if (formato === "miles_punto_decimal_coma") return parseFloat(s.replace(/\./g, "").replace(",", "."));
   return parseFloat(s);
 }
+const FORMATOS = ["auto", "miles_punto_decimal_coma", "punto", "coma", "miles_coma_decimal_punto"];
 
-// Calcula matched/sinMatch para una combinación (columna código, columna
-// precio, formato de número) dada — la usan tanto el auto-detector (para
-// puntuar candidatos) como el botón manual "Ver vista previa".
-function procesarColumnas(colCod, colPre, formato){
-  const matched = [], sinMatch = [];
-  importState.filas.forEach(f => {
-    if (!f || !f.length) return;
-    const iCod = resolverIdx(colCod, f.length);
-    const iPre = resolverIdx(colPre, f.length);
-    if (iCod < 0 || iPre < 0 || iCod >= f.length || iPre >= f.length) return; // fila muy corta para esta posición
-    const codigoRaw = String(f[iCod] ?? "").trim();
-    const precio = parseNumero(f[iPre], formato);
-    if (!codigoRaw || isNaN(precio)) return; // fila de encabezado, sección o vacía — se ignora sola
-    const producto = CATALOGO.find(p => p.marca === marcaActiva && String(p.codigo_proveedor ?? "") === codigoRaw);
-    if (!producto) { sinMatch.push({ codigoRaw, precio }); return; }
-    const nuevoPrecio = calcularPrecioFinal(marcaActiva, precio);
-    matched.push({ producto, precioListaRaw: precio, nuevoPrecio });
-  });
-  return { matched, sinMatch };
+// Qué tan lejos quedan (en la mediana) los precios nuevos de los actuales:
+// 0 = iguales, 0.2 ≈ un 20% de diferencia. Sin datos, infinito.
+function desvioMediano(ratios){
+  if (!ratios.length) return Infinity;
+  const d = ratios.map(r => Math.abs(Math.log(r))).sort((a, b) => a - b);
+  return d[Math.floor(d.length / 2)];
 }
 
-// ══ Auto-detección de columnas ══
-// No le pregunta nada al usuario: usa lo que YA sabe de esta marca (los
-// codigo_proveedor cargados en cada producto) como respuesta correcta, y
-// prueba todas las columnas candidatas (desde el inicio y desde el final)
-// contra esa respuesta. La columna de código es la que más veces matchea
-// un codigo_proveedor real. La columna de precio + formato de número es la
-// combinación que, aplicando la fórmula de la marca, da más resultados NO
-// sospechosos (reusa precioSospechoso — el mismo chequeo que evitó el
-// desastre de La Americana, ahora usado también para elegir sola).
-function autoDetectarColumnas(filas){
-  const productosMarca = CATALOGO.filter(p => p.marca === marcaActiva && p.codigo_proveedor);
+// ── 1. Por código del proveedor ──
+function detectarPorCodigo(marca, prods, filas){
+  const conCod = prods.filter(p => p.codigo_proveedor);
   const filasValidas = filas.filter(f => f && f.length);
-  if (!productosMarca.length || !filasValidas.length) return null;
-  const codigosConocidos = new Set(productosMarca.map(p => String(p.codigo_proveedor).trim()));
-  const maxCols = Math.max(...filasValidas.slice(0, 60).map(f => f.length));
-
+  if (conCod.length < 2 || !filasValidas.length) return null;
+  // código → productos (puede haber más de uno: el mismo artículo del
+  // proveedor con dos códigos de barras distintos, p.ej. Make 6805).
+  const porCodigo = new Map();
+  conCod.forEach(p => { const k = String(p.codigo_proveedor).trim(); porCodigo.set(k, [...(porCodigo.get(k) || []), p]); });
+  const maxCols = Math.max(...filasValidas.slice(0, 80).map(f => f.length));
   const candidatos = [];
-  for (let c = 0; c < Math.min(maxCols, 8); c++) candidatos.push(c);
+  for (let c = 0; c < Math.min(maxCols, 10); c++) candidatos.push(c);
   for (let k = 1; k <= Math.min(6, maxCols); k++) candidatos.push(-k);
 
-  // 1) Columna de código: la que más coincide contra los codigo_proveedor que ya tenemos.
-  let mejorCod = null, mejorCodScore = 0;
+  // Columna de código: la que coincide con MÁS CÓDIGOS DISTINTOS (no
+  // renglones: una columna de cantidades "12", "24" coincide mil veces con
+  // códigos chicos como el 12, pero siempre con los mismos 4 o 5 valores).
+  let colCod = null, mejorDistintos = 0;
   for (const cand of candidatos) {
-    let score = 0;
+    const vistos = new Set();
     for (const f of filasValidas) {
       const i = resolverIdx(cand, f.length);
       if (i < 0 || i >= f.length) continue;
-      const val = String(f[i] ?? "").trim();
-      if (val && codigosConocidos.has(val)) score++;
+      const v = String(f[i] ?? "").trim();
+      if (porCodigo.has(v)) vistos.add(v);
     }
-    if (score > mejorCodScore) { mejorCodScore = score; mejorCod = cand; }
+    if (vistos.size > mejorDistintos) { mejorDistintos = vistos.size; colCod = cand; }
   }
-  if (mejorCod == null || mejorCodScore < 2) return null; // sin señal suficiente para confiar
+  if (colCod == null || mejorDistintos < 2) return null;
 
-  // 2) Columna de precio + formato: la combinación con más resultados razonables.
-  const FORMATOS = ["punto", "coma", "miles_coma_decimal_punto", "miles_punto_decimal_coma"];
+  // Columna de precio + formato: la que da más precios creíbles; si empatan
+  // (típico: "sin IVA" y "con IVA"), la que queda más cerca de los actuales.
+  const evaluar = (colPre, formato) => {
+    const vistos = new Set(); const matched = [];
+    for (const f of filasValidas) {
+      const iC = resolverIdx(colCod, f.length), iP = resolverIdx(colPre, f.length);
+      if (iC < 0 || iP < 0 || iC >= f.length || iP >= f.length) continue;
+      const cod = String(f[iC] ?? "").trim();
+      const productos = porCodigo.get(cod);
+      if (!productos || vistos.has(cod)) continue;
+      const precio = parseNumero(f[iP], formato);
+      if (isNaN(precio)) continue;
+      vistos.add(cod);
+      for (const producto of productos) {
+        matched.push({ producto, precioListaRaw: precio, nuevoPrecio: calcularPrecioFinal(marca, precio, producto), via: "código " + cod });
+      }
+    }
+    return matched;
+  };
   let mejor = null;
   for (const cand of candidatos) {
-    if (cand === mejorCod) continue;
+    if (cand === colCod) continue;
     for (const formato of FORMATOS) {
-      let ok = 0, total = 0;
-      for (const f of filasValidas) {
-        const iCod = resolverIdx(mejorCod, f.length);
-        const iPre = resolverIdx(cand, f.length);
-        if (iCod < 0 || iPre < 0 || iCod >= f.length || iPre >= f.length) continue;
-        const codigoRaw = String(f[iCod] ?? "").trim();
-        if (!codigoRaw || !codigosConocidos.has(codigoRaw)) continue;
-        const producto = productosMarca.find(p => String(p.codigo_proveedor).trim() === codigoRaw);
-        const precio = parseNumero(f[iPre], formato);
-        if (isNaN(precio)) continue;
-        total++;
-        const nuevoPrecio = calcularPrecioFinal(marcaActiva, precio);
-        if (nuevoPrecio != null && !precioSospechoso(nuevoPrecio, producto.mayorista)) ok++;
-      }
-      if (total >= 2 && (!mejor || ok > mejor.ok || (ok === mejor.ok && total > mejor.total))) {
-        mejor = { colPrecio: cand, formato, ok, total };
-      }
+      const matched = evaluar(cand, formato);
+      if (matched.length < 2) continue;
+      const st = estadisticas(matched);
+      if (!mejor || st.ok > mejor.st.ok || (st.ok === mejor.st.ok && st.desvio < mejor.st.desvio)) mejor = { matched, st };
     }
   }
-  if (!mejor || mejor.ok === 0 || mejor.ok / mejor.total < 0.5) return null; // ninguna combinación es confiable
-
-  return { colCodigo: mejorCod, colPrecio: mejor.colPrecio, formato: mejor.formato, confianza: mejor.ok / mejor.total };
+  return mejor ? { matched: mejor.matched, metodo: "código" } : null;
 }
 
-// Punto de entrada único después de leer un archivo/texto: intenta resolver
-// todo solo. Si lo logra, va directo a la vista previa (Paso 3) — el
-// usuario no toca nada. Si no encuentra una combinación confiable (marca
-// sin codigo_proveedor cargado todavía, o un archivo muy distinto a lo
-// esperado), recién ahí cae al Paso 2 para elegir a mano.
-function procesarArchivoDetectado(){
-  if (!prepararPasoColumnas()) { toast("No encontré filas para leer."); return; }
-  const auto = autoDetectarColumnas(importState.filas);
-  if (auto) {
-    $("selColCodigo").value = String(auto.colCodigo);
-    $("selColPrecio").value = String(auto.colPrecio);
-    $("selFormatoNum").value = auto.formato;
-    importState.auto = auto;
-    const { matched, sinMatch } = procesarColumnas(auto.colCodigo, auto.colPrecio, auto.formato);
-    importState.matched = matched; importState.sinMatch = sinMatch;
-    renderImportPreview();
-  } else {
-    importState.auto = null;
-    mostrarPasoColumnas();
-    const productosMarca = CATALOGO.filter(p => p.marca === marcaActiva && p.codigo_proveedor);
-    toast(productosMarca.length
-      ? "No pude detectar las columnas solo con este archivo — elegilas abajo."
-      : `${marcaActiva} todavía no tiene ningún código de proveedor cargado, así que no tengo con qué detectar solo. Elegí las columnas abajo esta vez.`);
+// ── 2 y 3. Por renglón: código de barras o nombre ──
+const PALABRAS_VACIAS = new Set(["de","del","la","el","los","las","con","para","y","x","cm","mm","mts","mt","un","und","unid","gr","grs","g","kg","lt","lts","ml","cc","por","en"]);
+function normalizarTexto(s){
+  return String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/(\d)([a-z])/g, "$1 $2").replace(/([a-z])(\d)/g, "$1 $2")
+    .replace(/[^a-z0-9ñ]+/g, " ").trim();
+}
+function tokensDe(s){
+  return normalizarTexto(s).split(" ").filter(t => t && !PALABRAS_VACIAS.has(t) && (t.length >= 2 || /\d/.test(t)));
+}
+function palabraCoincide(w, toks){
+  if (toks.has(w)) return true;
+  for (const t of toks) {
+    if (/\d/.test(t)) continue;
+    const corto = t.length < w.length ? t : w, largo = t.length < w.length ? w : t;
+    if (corto.length >= 3 && largo.startsWith(corto)) return true; // "sec" ~ "secador", "sopapa" ~ "sopapas"
   }
+  return false;
+}
+const SOLO_PRECIO = /^[\s$]*\d[\d.,]*\s*$/;
+function claveMarca(marca){ return normalizarTexto(marca).replace(/ /g, ""); }
+
+// ¿El archivo nombra a la marca? Es lo que separa una coincidencia real de
+// una casual: en todas las listas reales el proveedor aparece nombrado
+// (ROMYL, FIBRAN, LA GAUCHITA, BIOBAG…) y en ninguna coincidencia falsa.
+// Marcas de 5+ letras: alcanza con que la clave aparezca pegada en el texto.
+// Cortas (Pop, Make): tiene que ser una palabra suelta ("pop" ≠ "popular").
+function mencionaMarca(marca, fuente){
+  const clave = claveMarca(marca);
+  if (clave.length >= 5 && fuente.textoNorm.includes(clave)) return true;
+  if (clave.length < 5 && fuente.textoPalabras.has(clave)) return true;
+  return tokensDe(marca).some(t => t.length >= 4 && fuente.textoPalabras.has(t)); // "AMERICANA" → La Americana
 }
 
-$("btnProcesarColumnas").onclick = () => {
-  const colCod = Number($("selColCodigo").value);
-  const colPre = Number($("selColPrecio").value);
-  const formato = $("selFormatoNum").value;
-  importState.auto = null; // elegido a mano — no mostrar la nota de "detecté solo"
-  const { matched, sinMatch } = procesarColumnas(colCod, colPre, formato);
-  importState.matched = matched; importState.sinMatch = sinMatch;
+function detectarPorRenglon(marca, prods, lineasCrudas, usarNombres){
+  const lineas = lineasCrudas.map(l => String(l || "").trim()).filter(Boolean);
+  if (!lineas.length) return null;
+  const marcaToks = new Set(tokensDe(marca));
+  const clave = claveMarca(marca);
+  const info = lineas.map(raw => ({
+    toks: new Set(tokensDe(raw.replace(/\d[\d.,]*[.,]\d+/g, " "))), // sin precios con separador: que "1.234,50" no aporte un "50" falso
+    conMarca: normalizarTexto(raw).replace(/ /g, "").includes(clave),
+  }));
+  const digitos = lineas.map(raw => raw.replace(/(\d)[\s-]+(?=\d)/g, "$1")); // EAN partido "7790345 101007"
+
+  const asignados = [];
+  for (const p of prods) {
+    const pt = tokensDe(p.nombre).filter(t => !marcaToks.has(t));
+    // Por código de barras: si nuestro código interno es un EAN y aparece en
+    // un renglón, ese es el renglón — no hay forma de confundirse.
+    const ean = String(p.codigo || "");
+    if (/^\d{8,14}$/.test(ean)) {
+      const i = digitos.findIndex(d => d.includes(ean));
+      if (i >= 0) { asignados.push({ producto: p, i, pt: new Set(pt), porEan: true }); continue; }
+    }
+    if (!usarNombres || !pt.length) continue;
+    const nums = pt.filter(t => /^\d+$/.test(t));
+    const palabras = pt.filter(t => !/^\d+$/.test(t));
+    let mejor = null;
+    info.forEach((li, i) => {
+      if (!nums.every(n => li.toks.has(n))) return;
+      const hits = palabras.filter(w => palabraCoincide(w, li.toks)).length;
+      // Si el renglón nombra la marca y tiene todas las medidas ("45X60
+      // BIOBAG"), alcanza aunque la lista no repita "bolsa de residuo".
+      const porMarca = li.conMarca && nums.length > 0;
+      if (!porMarca && palabras.length && hits / palabras.length < 0.75) return;
+      const score = (nums.length + hits) / pt.length + (li.conMarca ? 0.5 : 0);
+      const ruido = [...li.toks].filter(t => /^\d{1,3}$/.test(t) && !nums.includes(t)).length; // otra medida en el renglón
+      if (!mejor || score > mejor.score || (score === mejor.score && ruido < mejor.ruido)) mejor = { i, score, ruido };
+    });
+    if (mejor) asignados.push({ producto: p, i: mejor.i, pt: new Set(pt), porEan: false });
+  }
+  if (!asignados.length) return null;
+
+  // Código de artículo del proveedor en cada renglón. Si varios productos ya
+  // tienen código guardado, se aprende en qué posición del renglón viene
+  // ("222" en "C2.014 02-0022 222 7792459002225 …", no "C2.014"); si no, el
+  // primer dato del renglón que tenga números.
+  const pareceCodigo = t => /^[A-Za-z0-9.\-]{1,12}$/.test(t) && /\d/.test(t) && !/^\d{8,}$/.test(t);
+  const posiciones = {};
+  asignados.forEach(a => {
+    const cod = a.producto.codigo_proveedor && String(a.producto.codigo_proveedor).trim();
+    if (!cod) return;
+    const j = lineas[a.i].split(/\s+/).indexOf(cod);
+    if (j >= 0) posiciones[j] = (posiciones[j] || 0) + 1;
+  });
+  const ranking = Object.entries(posiciones).sort((x, y) => y[1] - x[1]);
+  const posAprendida = ranking.length && ranking[0][1] >= 2 ? +ranking[0][0] : null;
+
+  const conNumeros = asignados.map(a => {
+    const raw = lineas[a.i];
+    const toks = raw.split(/\s+/);
+    const t = posAprendida != null ? toks[posAprendida] : (toks.length > 2 ? toks[0] : null);
+    // Nunca una medida del propio nombre ("45X60" en Bio Bag y en Melli
+    // sería el mismo "código" para dos marcas).
+    const codigo = t && pareceCodigo(t) && !tokensDe(t).some(x => a.pt.has(x)) ? t : null;
+    const numsDe = (txt) => (txt.match(/\d[\d.,]*\d|\d/g) || []).filter(n => n !== codigo && !a.pt.has(n) && n.replace(/\D/g, "").length < 8);
+    let nums = numsDe(raw), origen = raw, usaSiguiente = false;
+    if (!nums.length && lineas[a.i + 1] && SOLO_PRECIO.test(lineas[a.i + 1])) { nums = numsDe(lineas[a.i + 1]); origen = raw + " / " + lineas[a.i + 1]; usaSiguiente = true; }
+    // Código guardado distinto al del renglón encontrado por código de
+    // barras → el guardado estaba mal (pasó con La Gauchita): se corrige.
+    const guardado = a.producto.codigo_proveedor ? String(a.producto.codigo_proveedor).trim() : null;
+    const corregirCodigo = !!(a.porEan && codigo && guardado && posAprendida != null && codigo !== guardado);
+    return { ...a, codigo, nums, origen, usaSiguiente, corregirCodigo };
+  });
+
+  let mejor = null;
+  for (let k = 1; k <= 3; k++) for (const formato of FORMATOS) {
+    const matched = [];
+    for (const a of conNumeros) {
+      const s = a.nums[a.nums.length - k]; if (s == null) continue;
+      const precio = parseNumero(s, formato); if (isNaN(precio)) continue;
+      matched.push({ producto: a.producto, precioListaRaw: precio, nuevoPrecio: calcularPrecioFinal(marca, precio, a.producto), codigoDetectado: a.codigo, corregirCodigo: a.corregirCodigo, lineaOrigen: a.origen, via: a.porEan ? "cód. de barras" : "nombre" });
+    }
+    if (!matched.length) continue;
+    const st = estadisticas(matched);
+    if (!mejor || st.ok > mejor.st.ok || (st.ok === mejor.st.ok && st.desvio < mejor.st.desvio)) mejor = { matched, st };
+  }
+  if (!mejor) return null;
+
+  const usados = new Set();
+  conNumeros.forEach(a => { usados.add(a.i); if (a.usaSiguiente) usados.add(a.i + 1); });
+  const noReconocidos = mejor.matched.some(m => m.via === "nombre")
+    ? lineas.filter((l, i) => !usados.has(i) && /\d/.test(l) && !SOLO_PRECIO.test(l) && /[a-zñ]{3,}/i.test(l)) : [];
+  return { matched: mejor.matched, metodo: mejor.matched.every(m => m.via === "cód. de barras") ? "cód. de barras" : "nombre", noReconocidos };
+}
+
+function estadisticas(matched){
+  let ok = 0; const ratios = [];
+  for (const m of matched) {
+    if (m.nuevoPrecio != null && !precioSospechoso(m.nuevoPrecio, m.producto.mayorista)) {
+      ok++;
+      if (m.producto.mayorista > 0) ratios.push(m.nuevoPrecio / m.producto.mayorista);
+    }
+  }
+  return { ok, total: matched.length, desvio: desvioMediano(ratios) };
+}
+
+// ¿Este resultado es de verdad de esta marca? Que una lista de un proveedor
+// nunca actualice artículos de otro (la de Romyl trae "SOPAPA NEGRA", que no
+// puede pisar la Sopapa de Fedata; los códigos chicos 1, 2, 3… se repiten
+// entre proveedores). Calibrado cruzando cada lista real contra cada marca.
+function aceptable(det, fuente, mencionada){
+  const st = estadisticas(det.matched);
+  if (!st.total || st.ok / st.total < 0.8) return false;         // la gran mayoría tiene que dar un precio creíble
+  if (det.metodo === "cód. de barras") return true;              // un EAN no se confunde
+  if (!mencionada) return false;                                 // por código o nombre: el archivo tiene que nombrar la marca
+  return st.desvio === Infinity || st.desvio <= 0.6;             // y los precios no pueden quedar corridos al azar
+}
+
+// ── 4. Por posición en la página (catálogos en grilla, p.ej. MisPlast) ──
+// Cada producto es una "tarjeta": arriba "CODIGO DE ART: 2008", abajo
+// "P.UNITARIO: $ 5.942,00". Se busca el rótulo con el código del artículo y
+// se toma el primer precio que está debajo, en la misma columna.
+// El código sale de codigo_proveedor o, si no hay, del código interno
+// ("MISPLAST-2008" → "2008").
+function codigoArticuloDe(p){
+  if (p.codigo_proveedor) return String(p.codigo_proveedor).trim();
+  const m = String(p.codigo || "").match(/^[A-Za-z]+-([A-Za-z0-9]{3,8})$/);
+  return m ? m[1] : null;
+}
+function detectarPorPosicion(marca, prods, items){
+  if (!items || !items.length) return null;
+  // Tarjetas: rótulo "CODIGO DE ART:" + el código (en el mismo texto o en el
+  // de al lado, en la misma altura).
+  const rotulos = items.filter(i => /c[oó]d(igo)?\.?\s*(de\s*)?art/i.test(i.s) && !/barra/i.test(i.s));
+  const tarjetas = [];
+  for (const r of rotulos) {
+    let cod = (r.s.match(/art[^:]*:\s*([A-Za-z0-9]{3,8})\b/i) || [])[1];
+    if (!cod) {
+      const vecino = items.filter(i => i.p === r.p && Math.abs(i.y - r.y) <= 4 && i.x > r.x && i.x - r.x <= 220 && /^[A-Za-z0-9]{3,8}$/.test(i.s))
+        .sort((a, b) => a.x - b.x)[0];
+      cod = vecino && vecino.s;
+    }
+    if (cod) tarjetas.push({ cod, p: r.p, x: r.x, y: r.y, s: r.s });
+  }
+  const precios = items.filter(i => /\$\s*\d/.test(i.s)).map(i => ({ ...i, num: i.s.match(/\$\s*(\d[\d.,]*\d|\d)/)[1] }));
+  if (!tarjetas.length || !precios.length) return null;
+  // Precio de cada tarjeta: el primero debajo, dentro del ancho de la
+  // tarjeta, y antes de llegar a la tarjeta siguiente de la misma columna.
+  const precioDe = (t) => {
+    const siguiente = tarjetas.filter(o => o !== t && o.p === t.p && o.y < t.y - 4 && Math.abs(o.x - t.x) < 80).sort((a, b) => b.y - a.y)[0];
+    const piso = siguiente ? siguiente.y : -Infinity;
+    return precios.filter(pr => pr.p === t.p && pr.y < t.y && pr.y > piso && t.y - pr.y < 340 && pr.x >= t.x - 40 && pr.x <= t.x + 280)
+      .sort((a, b) => b.y - a.y)[0] || null;
+  };
+  const porCod = new Map(tarjetas.map(t => [t.cod, t]));
+  const encontrados = [];
+  for (const p of prods) {
+    const cod = codigoArticuloDe(p);
+    const t = cod && porCod.get(cod);
+    if (!t) continue;
+    const pr = precioDe(t);
+    if (pr) encontrados.push({ producto: p, cod, num: pr.num, origen: `art. ${cod} … ${pr.s}` });
+  }
+  if (!encontrados.length) return null;
+  let mejor = null;
+  for (const formato of FORMATOS) {
+    const matched = encontrados.map(e => {
+      const precio = parseNumero(e.num, formato);
+      return { producto: e.producto, precioListaRaw: precio, nuevoPrecio: isNaN(precio) ? null : calcularPrecioFinal(marca, precio, e.producto), codigoDetectado: e.producto.codigo_proveedor ? null : e.cod, lineaOrigen: e.origen, via: "posición en la página" };
+    });
+    const st = estadisticas(matched);
+    if (!mejor || st.ok > mejor.st.ok || (st.ok === mejor.st.ok && st.desvio < mejor.st.desvio)) mejor = { matched, st };
+  }
+  return { matched: mejor.matched, metodo: "posición" };
+}
+
+function palabrasDeFuente(fuente){
+  return fuente.lineas.map(l => String(l || "").trim().split(/\s+/).filter(s => /[A-Za-z0-9]/.test(s))).filter(f => f.length);
+}
+
+function detectarMarca(marca, fuente, forzada){
+  const r = reglaDe(marca);
+  if (!r || r.estado !== "Definida") return null;
+  const prods = CATALOGO.filter(p => p.marca === marca);
+  if (!prods.length) return null;
+  const mencionada = forzada || mencionaMarca(marca, fuente);
+
+  // Texto copiado de un PDF: espacios dobles sueltos pueden juntar código y
+  // nombre en una celda — segundo intento con cada palabra en su columna.
+  let porCod = detectarPorCodigo(marca, prods, fuente.filas) || detectarPorCodigo(marca, prods, palabrasDeFuente(fuente));
+  if (porCod && !aceptable(porCod, fuente, mencionada)) porCod = null;
+  const conCod = prods.filter(p => p.codigo_proveedor).length;
+  let porRen = detectarPorRenglon(marca, prods, fuente.lineas, mencionada && conCod < prods.length / 2);
+  if (porRen && !aceptable(porRen, fuente, mencionada)) porRen = null;
+  let porPos = detectarPorPosicion(marca, prods, fuente.items);
+  if (porPos && !aceptable(porPos, fuente, mencionada)) porPos = null;
+  if (!porCod && !porRen && !porPos) return null;
+
+  // Combinar: lo encontrado por código de barras manda (la identidad es
+  // segura), salvo que dé un precio absurdo y el código de proveedor no.
+  // Lo de "posición" solo completa lo que no salió por los otros dos.
+  const items = new Map();
+  (porPos ? porPos.matched : []).forEach(m => items.set(m.producto.codigo, m));
+  (porCod ? porCod.matched : []).forEach(m => items.set(m.producto.codigo, m));
+  (porRen ? porRen.matched : []).forEach(m => {
+    const previo = items.get(m.producto.codigo);
+    const eanRaro = precioSospechoso(m.nuevoPrecio, m.producto.mayorista);
+    const previoOk = previo && !precioSospechoso(previo.nuevoPrecio, previo.producto.mayorista);
+    if (!previo || (m.via === "cód. de barras" && !(eanRaro && previoOk))) items.set(m.producto.codigo, m);
+  });
+  const metodos = [porCod && porCod.metodo, porRen && porRen.metodo, porPos && porPos.metodo].filter(Boolean);
+  return { matched: [...items.values()], metodo: metodos.join(" + "), noReconocidos: porRen ? porRen.noReconocidos : [] };
+}
+
+// Recorre todas las fuentes × todas las marcas con regla y arma el resultado
+// combinado: por artículo, el precio más barato entre las listas donde aparece.
+// `forzar` = { nombreDeFuente: marca } cuando Pablo eligió a mano de qué
+// proveedor es una lista que no se pudo reconocer sola (p.ej. un mensaje que
+// no nombra al proveedor).
+function analizarFuentes(fuentes, forzar){
+  fuentes.forEach(f => {
+    const norm = normalizarTexto(f.lineas.join(" "));
+    f.textoNorm = norm.replace(/ /g, "");
+    f.textoPalabras = new Set(norm.split(" "));
+  });
+  const marcas = [...new Set(CATALOGO.map(p => p.marca))];
+  const porMarca = {};
+  const noReconocidas = [];
+  for (const f of fuentes) {
+    let algo = false;
+    const forzada = forzar && forzar[f.nombre];
+    for (const marca of (forzada ? [forzada] : marcas)) {
+      const det = detectarMarca(marca, f, !!forzada);
+      if (!det) continue;
+      algo = true;
+      const g = porMarca[marca] || (porMarca[marca] = { marca, items: new Map(), fuentes: [], metodos: new Set(), noReconocidos: [] });
+      g.fuentes.push(f.nombre); g.metodos.add(det.metodo);
+      (det.noReconocidos || []).forEach(l => g.noReconocidos.push(l));
+      for (const m of det.matched) {
+        const previo = g.items.get(m.producto.codigo);
+        if (!previo || (m.nuevoPrecio != null && (previo.nuevoPrecio == null || m.nuevoPrecio < previo.nuevoPrecio))) {
+          g.items.set(m.producto.codigo, { ...m, fuente: f.nombre });
+        }
+      }
+    }
+    if (!algo) noReconocidas.push(f.nombre);
+  }
+  return { grupos: Object.values(porMarca), noReconocidas };
+}
+
+// ── Flujo ──
+async function procesarFuentes(fuentes){
+  $("importOrigen").style.display = "none";
+  $("importPreview").style.display = "none";
+  $("importProgreso").style.display = "";
+  $("importProgreso").textContent = "Analizando la lista…";
+  await new Promise(r => setTimeout(r, 30));
+  importState.fuentes = fuentes;
+  importState.resultado = analizarFuentes(fuentes);
+  $("importProgreso").style.display = "none";
   renderImportPreview();
+}
+
+$("importFile").addEventListener("change", async (e) => {
+  const files = [...e.target.files]; if (!files.length) return;
+  $("importOrigen").style.display = "none";
+  $("importProgreso").style.display = "";
+  try {
+    const fuentes = [];
+    for (const file of files) {
+      $("importProgreso").textContent = `Leyendo ${file.name}…`;
+      fuentes.push(await leerArchivo(file));
+    }
+    await procesarFuentes(fuentes);
+  } catch (err) {
+    $("importProgreso").style.display = "none";
+    $("importOrigen").style.display = "";
+    toast("No se pudo leer el archivo: " + err.message);
+  }
+});
+
+$("btnAnalizarTexto").onclick = () => {
+  const texto = $("importTexto").value;
+  if (!texto.trim()) { toast("Pegá el texto primero"); return; }
+  procesarFuentes([fuenteDeTexto("texto pegado", texto)]);
 };
+
+$("btnImportOtra").onclick = () => resetImportPanel();
+
+$("importGrupos").addEventListener("change", (e) => {
+  const sel = e.target.closest(".import-forzar");
+  if (!sel || !sel.value) return;
+  importState.forzar = { ...(importState.forzar || {}), [sel.dataset.fuente]: sel.value };
+  importState.resultado = analizarFuentes(importState.fuentes, importState.forzar);
+  renderImportPreview();
+});
 
 function renderImportPreview(){
-  const { matched, sinMatch } = importState;
-  const cambian = matched.filter(m => m.nuevoPrecio != null && m.nuevoPrecio !== m.producto.mayorista);
-  const sinCambio = matched.filter(m => m.nuevoPrecio != null && m.nuevoPrecio === m.producto.mayorista);
-  const noCalculable = matched.filter(m => m.nuevoPrecio == null);
-
-  // Separa lo que da un precio razonable de lo que no. Si la MAYORÍA de los
-  // cambios da un precio sin sentido, es casi seguro que se eligió mal la
-  // columna de precio o el formato de número en el paso anterior — ahí se
-  // corta todo, no se ofrece aplicar nada (ver precioSospechoso más arriba).
-  const cambianOk = cambian.filter(m => !precioSospechoso(m.nuevoPrecio, m.producto.mayorista));
-  const cambianRaros = cambian.filter(m => precioSospechoso(m.nuevoPrecio, m.producto.mayorista));
-  const sistemico = cambian.length >= 3 && cambianRaros.length / cambian.length >= 0.5;
-
-  let resumen = `<b>${matched.length}</b> productos de ${escHtml(marcaActiva)} reconocidos por código`;
-  if (sinMatch.length) resumen += ` · <b>${sinMatch.length}</b> códigos de la lista no matchean ningún producto`;
-  if (noCalculable.length) resumen += ` · <b>${noCalculable.length}</b> no se pueden calcular con esta regla (ver nota)`;
-  if (sinCambio.length) resumen += ` · ${sinCambio.length} quedan con el mismo precio`;
-  $("importResumen").innerHTML = resumen;
-
-  const avisoBox = (color, bg, texto) => `<div style="margin:0 0 10px; padding:12px 13px; border-radius:12px; background:${bg}; color:${color}; font-size:12.5px; font-weight:700; line-height:1.4">${texto}</div>`;
-  if (sistemico) {
-    $("importAviso").innerHTML = avisoBox("var(--danger)", "var(--danger-dim)", importState.auto
-      ? `🚫 Intenté detectar la columna de precio solo, pero el resultado no da bien — la mayoría (${cambianRaros.length} de ${cambian.length}) sale con un valor absurdo comparado con el precio actual. Este archivo debe venir muy distinto a lo que esperaba. Elegí las columnas a mano abajo.`
-      : `🚫 Estos precios no tienen sentido — la mayoría (${cambianRaros.length} de ${cambian.length}) da valores absurdos comparados con el precio actual. Revisá la columna de precio o el formato de número elegidos abajo y volvé a intentar.`);
-  } else if (cambianRaros.length) {
-    $("importAviso").innerHTML = avisoBox("#B45400", "rgba(255,159,10,.14)",
-      `⚠️ ${cambianRaros.length} producto${cambianRaros.length===1?'':'s'} con un precio raro (muy distinto al actual) — quedan marcados en rojo abajo y NO se van a tocar. Si de verdad cambió así de golpe, actualizalo a mano en "Editar precio".`);
-  } else {
-    $("importAviso").innerHTML = "";
+  const { grupos, noReconocidas } = importState.resultado;
+  const aplicar = [];
+  let soloCodigos = 0;
+  let html = "";
+  let totalIguales = 0;
+  for (const g of grupos) {
+    const items = [...g.items.values()];
+    const cambian = items.filter(m => m.nuevoPrecio != null && m.nuevoPrecio !== m.producto.mayorista);
+    const ok = cambian.filter(m => !precioSospechoso(m.nuevoPrecio, m.producto.mayorista));
+    // Sin precio en la lista (sin stock / renglón sin importe): no es un
+    // error, simplemente no hay precio nuevo — quedan como están.
+    const sinPrecio = cambian.filter(m => precioSospechoso(m.nuevoPrecio, m.producto.mayorista) && (/sin\s*stock/i.test(m.lineaOrigen || "") || !(m.nuevoPrecio >= 20)));
+    const raros = cambian.filter(m => precioSospechoso(m.nuevoPrecio, m.producto.mayorista) && !sinPrecio.includes(m));
+    const iguales = items.length - cambian.length;
+    totalIguales += iguales;
+    ok.forEach(m => aplicar.push(m));
+    // Mismo precio pero con código de proveedor para guardar/corregir: se
+    // guarda igual (sin contarlo como cambio de precio).
+    items.filter(m => !cambian.includes(m) && m.codigoDetectado && (!m.producto.codigo_proveedor || m.corregirCodigo) && !precioSospechoso(m.nuevoPrecio, m.producto.mayorista))
+      .forEach(m => { soloCodigos++; aplicar.push(m); });
+    const prods = CATALOGO.filter(p => p.marca === g.marca);
+    const faltan = prods.filter(p => !g.items.has(p.codigo));
+    const fila = (m, raro) => `
+      <tr${raro ? ' style="background:var(--danger-dim)"' : ''}>
+        <td>${escHtml(m.producto.nombre)}<div style="font-size:9.5px; color:var(--text-muted); margin-top:2px">${escHtml(m.via || "")}${m.lineaOrigen ? " · “" + escHtml(m.lineaOrigen.slice(0, 60)) + "”" : ""}${g.fuentes.length > 1 ? " · " + escHtml(m.fuente) : ""}</div></td>
+        <td>${fmt(m.producto.mayorista)}</td>
+        <td class="flecha">→</td>
+        <td class="${raro ? '' : 'nuevo'}" style="${raro ? 'color:var(--danger); font-weight:800' : ''}">$${fmt(m.nuevoPrecio)}${raro ? ' ⚠️' : ''}</td>
+      </tr>`;
+    html += `
+      <div class="import-grupo">
+        <div class="import-grupo-head"><b>${escHtml(g.marca)}</b> · ${items.length} de ${prods.length} artículos reconocidos · <b>${ok.length}</b> cambian${iguales ? ` · ${iguales} iguales` : ""}</div>
+        ${raros.length ? `<div class="import-grupo-nota" style="color:#B45400">⚠️ ${raros.length} con un precio muy distinto al actual — marcados en rojo, NO se tocan.</div>` : ""}
+        ${sinPrecio.length ? `<div class="import-grupo-nota">Sin precio en la lista (sin stock), quedan como están: ${sinPrecio.map(m => escHtml(m.producto.nombre)).join(", ")}</div>` : ""}
+        ${faltan.length ? `<div class="import-grupo-nota">No están en la lista: ${faltan.map(p => escHtml(p.nombre)).join(", ")}</div>` : ""}
+        ${g.noReconocidos.length ? `<div class="import-grupo-nota">En la lista pero no en el catálogo: ${g.noReconocidos.slice(0, 8).map(escHtml).join(", ")}</div>` : ""}
+        ${ok.length || raros.length ? `<div class="import-preview-wrap"><table class="import-preview-tabla">
+          <thead><tr><th>Producto</th><th>Actual</th><th></th><th>Nuevo</th></tr></thead>
+          <tbody>${ok.map(m => fila(m, false)).join("")}${raros.map(m => fila(m, true)).join("")}</tbody>
+        </table></div>` : ""}
+      </div>`;
   }
-
-  const filaHtml = (m, raro) => `
-    <tr${raro ? ' style="background:var(--danger-dim)"' : ''}>
-      <td>${escHtml(m.producto.codigo_proveedor)}</td>
-      <td>${escHtml(m.producto.nombre)}</td>
-      <td>${fmt(m.producto.mayorista)}</td>
-      <td class="flecha">→</td>
-      <td class="${raro ? '' : 'nuevo'}" style="${raro ? 'color:var(--danger); font-weight:800' : ''}">$${fmt(m.nuevoPrecio)}${raro ? ' ⚠️' : ''}</td>
-    </tr>`;
-
-  const filas = sistemico ? [] : [...cambianOk.map(m => filaHtml(m, false)), ...cambianRaros.map(m => filaHtml(m, true))];
-  $("importPreviewBody").innerHTML = filas.join("") || `<tr><td colspan="5" style="text-align:center; padding:16px; color:var(--text-muted)">${sistemico ? "Corregí la columna/formato y volvé a intentar." : "Ningún precio cambia."}</td></tr>`;
-
-  importState.matched = sistemico ? [] : cambianOk; // solo lo que da un valor razonable se aplica
-  $("btnImportAplicar").textContent = sistemico ? "Corregí el paso anterior" : `Aplicar ${cambianOk.length} cambio${cambianOk.length===1?'':'s'}`;
-  $("btnImportAplicar").disabled = sistemico || cambianOk.length === 0;
-
-  $("importPasoOrigen").style.display = "none";
-  $("importPasoColumnas").style.display = "none";
-  $("importPasoPreview").style.display = "";
+  if (noReconocidas.length) {
+    // Nunca un callejón sin salida: si una lista no se reconoce sola (p.ej.
+    // un mensaje que no nombra al proveedor), se elige la marca con un toque.
+    const opciones = [...new Set(CATALOGO.map(p => p.marca))].filter(m => { const r = reglaDe(m); return r && r.estado === "Definida"; }).sort();
+    html += noReconocidas.map(n => `
+      <div class="import-grupo" style="background:var(--danger-dim); border-radius:12px; padding:10px 12px">
+        <div class="import-grupo-head">No reconocí solo de qué proveedor es <b>${escHtml(n)}</b>. ¿De cuál es?</div>
+        <select class="import-forzar" data-fuente="${escHtml(n)}" style="width:100%; padding:10px; border-radius:10px; border:none; background:var(--bg-card); font-size:14px">
+          <option value="">Elegí el proveedor…</option>
+          ${opciones.map(m => `<option value="${escHtml(m)}">${escHtml(m)}</option>`).join("")}
+        </select>
+      </div>`).join("");
+  }
+  const marcasTxt = grupos.map(g => g.marca).join(", ");
+  $("importResumen").innerHTML = grupos.length
+    ? `Detecté: <b>${escHtml(marcasTxt)}</b>${importState.fuentes.length > 1 ? ` (${importState.fuentes.length} listas — si un artículo está en varias, queda el más barato)` : ""}`
+    : "No reconocí ningún artículo del catálogo en esta lista.";
+  $("importGrupos").innerHTML = html;
+  importState.aplicar = aplicar;
+  const nPrecios = aplicar.length - soloCodigos;
+  $("btnImportAplicar").textContent = nPrecios
+    ? `Aplicar ${nPrecios} precio${nPrecios === 1 ? "" : "s"} nuevo${nPrecios === 1 ? "" : "s"}`
+    : (soloCodigos ? `Guardar ${soloCodigos} código${soloCodigos === 1 ? "" : "s"} de proveedor (precios al día)` : (grupos.length ? "Todo al día — no hay cambios" : "Nada para aplicar"));
+  $("btnImportAplicar").disabled = !aplicar.length;
+  $("importPreview").style.display = "";
 }
 
-$("btnImportVolver").onclick = () => {
-  $("importPasoColumnas").style.display = "";
-  $("importPasoPreview").style.display = "none";
-};
-
 $("btnImportAplicar").onclick = async () => {
-  const cambian = importState.matched;
-  if (!cambian.length) return;
-  if (!confirm(`Vas a actualizar el precio de ${cambian.length} producto${cambian.length===1?'':'s'} de ${marcaActiva}. ¿Confirmás?`)) return;
-
+  const lista = importState.aplicar || [];
+  if (!lista.length) return;
   $("btnImportAplicar").disabled = true;
   let ok = 0, fail = 0;
-  for (const { producto, nuevoPrecio } of cambian) {
-    try {
-      const res = await fetch(`${SB_URL}/rest/v1/catalogo_visual_productos?codigo=eq.${encodeURIComponent(producto.codigo)}`, {
-        method: "PATCH",
-        headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-        body: JSON.stringify({ mayorista: nuevoPrecio }),
-      });
-      if (!res.ok) throw new Error();
-      producto.mayorista = nuevoPrecio;
-      ok++;
-    } catch (e) { fail++; }
+  const CHUNK = 10;
+  for (let i = 0; i < lista.length; i += CHUNK) {
+    await Promise.all(lista.slice(i, i + CHUNK).map(async ({ producto, nuevoPrecio, codigoDetectado, corregirCodigo }) => {
+      // Si el renglón traía el código de artículo del proveedor y no lo
+      // teníamos (o el guardado estaba mal según el código de barras), se
+      // guarda: la próxima lista de esa marca va directo y bien por código.
+      const body = { mayorista: nuevoPrecio };
+      if (codigoDetectado && (!producto.codigo_proveedor || corregirCodigo)) body.codigo_proveedor = codigoDetectado;
+      try {
+        const res = await fetch(`${SB_URL}/rest/v1/catalogo_visual_productos?codigo=eq.${encodeURIComponent(producto.codigo)}`, {
+          method: "PATCH",
+          headers: { apikey: SB_ANON, Authorization: `Bearer ${SB_ANON}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error();
+        producto.mayorista = nuevoPrecio;
+        if (body.codigo_proveedor) producto.codigo_proveedor = body.codigo_proveedor;
+        ok++;
+      } catch (e) { fail++; }
+    }));
+    $("btnImportAplicar").textContent = `Guardando… ${Math.min(i + CHUNK, lista.length)} / ${lista.length}`;
   }
-  toast(`✔ ${ok} precio${ok===1?'':'s'} de ${marcaActiva} actualizado${ok===1?'':'s'}${fail?`, ${fail} con error`:''}`);
+  toast(`✔ ${ok} precio${ok === 1 ? "" : "s"} actualizado${ok === 1 ? "" : "s"}${fail ? `, ${fail} con error` : ""}`);
+  renderMarcas();
+  if (fail) { renderImportPreview(); return; }
+  resetImportPanel();
   setModo("precio");
 };
 
