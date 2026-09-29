@@ -418,6 +418,9 @@ async function init(){
     ]);
   } catch (e) {
     $("lista").innerHTML = `<div class="empty">No se pudo cargar el catálogo.<br><small>${escHtml(e.message)}</small></div>`;
+    $("count").textContent = "sin conexión";
+    toast("No se pudo cargar el catálogo — reintentando…");
+    setTimeout(init, 5000);
     return;
   }
   renderMarcas();
@@ -1247,6 +1250,12 @@ function analizarFuentes(fuentes, forzar){
 
 // ── Flujo ──
 async function procesarFuentes(fuentes){
+  if (!CATALOGO.length) {
+    // Sin catálogo no hay contra qué comparar: decirlo claro, no "no reconocí".
+    toast("El catálogo todavía no cargó (revisá la conexión). Probá de nuevo en unos segundos.");
+    resetImportPanel();
+    return;
+  }
   $("importOrigen").style.display = "none";
   $("importPreview").style.display = "none";
   $("importProgreso").style.display = "";

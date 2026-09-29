@@ -25,6 +25,14 @@ process.on('uncaughtException', (err) => log('uncaughtException: ' + (err && err
 process.on('unhandledRejection', (reason) => log('unhandledRejection: ' + (reason && reason.stack || reason)));
 log(`arranque — versión ${app.getVersion()}, packaged=${app.isPackaged}`);
 
+// User-Agent solo ASCII. Electron le agrega el productName ("Admin Catálogo —
+// Mercado Limpio") y Supabase responde 500 "Something went wrong" a
+// cualquier pedido con esa tilde o ese guion largo en el User-Agent: el
+// catálogo quedaba vacío en la PC (en el celular no pasa, no lo agrega).
+app.userAgentFallback = app.userAgentFallback
+  .replace(/\S*[^\x00-\x7F]\S*\s*/g, '')
+  .replace('Chrome/', `AdminCatalogoML/${app.getVersion()} Chrome/`);
+
 const { autoUpdater } = require('electron-updater');
 
 const PANEL_URL = process.env.ADMIN_CATALOGO_URL || 'https://pablosantamaria26.github.io/admin-catalogo-ml/';
